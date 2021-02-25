@@ -5,10 +5,14 @@ import QtQuick.Layouts 1.2
 
 // Custom qml modules are in /theme (and included by resources.qrc)
 import Style 1.0
+import com.nextcloud.desktopclient 1.0
 
 MenuItem {
     id: userLine
     height: Style.trayWindowHeaderHeight
+
+    Accessible.role: Accessible.MenuItem
+    Accessible.name: qsTr("Account entry")
 
         RowLayout {
             id: userLineLayout
@@ -21,7 +25,11 @@ MenuItem {
                 Layout.preferredWidth: (userLineLayout.width * (5/6))
                 Layout.preferredHeight: (userLineLayout.height)
                 display: AbstractButton.IconOnly
+                hoverEnabled: true
                 flat: true
+
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Switch to account") + " " + name
 
                 MouseArea {
                     anchors.fill: parent
@@ -31,15 +39,22 @@ MenuItem {
                     }
                     onClicked: {
                         if (!isCurrentUser) {
-                            userModelBackend.switchCurrentUser(id)
+                            UserModel.switchCurrentUser(id)
                         } else {
                             accountMenu.close()
                         }
                     }
                 }
 
-                background: Rectangle {
-                    color: "transparent"
+
+                background: Item {
+                    height: parent.height
+                    width: userLine.menu ? userLine.menu.width : 0
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        color: parent.parent.hovered ? Style.lightHover : "transparent"
+                    }
                 }
 
                 RowLayout {
@@ -52,7 +67,7 @@ MenuItem {
                         Layout.leftMargin: 4
                         verticalAlignment: Qt.AlignCenter
                         cache: false
-                        source: ("image://avatars/" + id)
+                        source: model.avatar != "" ? model.avatar : "image://avatars/fallbackBlack"
                         Layout.preferredHeight: (userLineLayout.height -16)
                         Layout.preferredWidth: (userLineLayout.height -16)
                         Rectangle {
@@ -66,12 +81,17 @@ MenuItem {
                         }
                         Image {
                             id: accountStateIndicator
-                            source: isConnected ? "qrc:///client/theme/colored/state-ok.svg" : "qrc:///client/theme/colored/state-offline.svg"
+                            source: model.isConnected
+                                    ? Style.stateOnlineImageSource
+                                    : Style.stateOfflineImageSource
                             cache: false
                             x: accountStateIndicatorBackground.x + 1
                             y: accountStateIndicatorBackground.y + 1
                             sourceSize.width: Style.accountAvatarStateIndicatorSize
                             sourceSize.height: Style.accountAvatarStateIndicatorSize
+
+                            Accessible.role: Accessible.Indicator
+                            Accessible.name: model.isConnected ? qsTr("Account connected") : qsTr("Account not connected")
                         }
                     }
 
@@ -110,13 +130,20 @@ MenuItem {
                 icon.source: "qrc:///client/theme/more.svg"
                 icon.color: "transparent"
 
+                Accessible.role: Accessible.ButtonMenu
+                Accessible.name: qsTr("Account actions")
+                Accessible.onPressAction: userMoreButtonMouseArea.clicked()
+
                 MouseArea {
                     id: userMoreButtonMouseArea
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked:
-                    {
-                        userMoreButtonMenu.popup()
+                    onClicked: {
+                        if (userMoreButtonMenu.visible) {
+                            userMoreButtonMenu.close()
+                        } else {
+                            userMoreButtonMenu.popup()
+                        }
                     }
                 }
                 background:
@@ -130,30 +157,79 @@ MenuItem {
                 Menu {
                     id: userMoreButtonMenu
                     width: 120
+                    closePolicy: Menu.CloseOnPressOutsideParent | Menu.CloseOnEscape
 
                     background: Rectangle {
-                        border.color: Style.ncBlue
+                        border.color: Style.menuBorder
                         radius: 2
                     }
 
                     MenuItem {
-                        text: isConnected ? qsTr("Log out") : qsTr("Log in")
+                        text: model.isConnected ? qsTr("Log out") : qsTr("Log in")
                         font.pixelSize: Style.topLinePixelSize
+                        hoverEnabled: true
                         onClicked: {
-                            isConnected ? userModelBackend.logout(index) : userModelBackend.login(index)
+                            model.isConnected ? UserModel.logout(index) : UserModel.login(index)
+                            accountMenu.close()
+                        }
+
+                        background: Item {
+                            height: parent.height
+                            width: parent.menu.width
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                color: parent.parent.hovered ? Style.lightHover : "transparent"
+                            }
+                        }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: model.isConnected ? qsTr("Log out") : qsTr("Log in")
+
+                        onPressed: {
+                            if (model.isConnected) {
+                                UserModel.logout(index)
+                            } else {
+                                UserModel.login(index)
+                            }
                             accountMenu.close()
                         }
                     }
 
                     MenuItem {
-                        text: qsTr("Remove Account")
+                        id: removeAccountButton
+                        text: qsTr("Remove account")
                         font.pixelSize: Style.topLinePixelSize
+                        hoverEnabled: true
                         onClicked: {
-                            userModelBackend.removeAccount(index)
+                            UserModel.removeAccount(index)
                             accountMenu.close()
                         }
+
+                        background: Item {
+                            height: parent.height
+                            width: parent.menu.width
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                color: parent.parent.hovered ? Style.lightHover : "transparent"
+                            }
+                        }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: text
+                        Accessible.onPressAction: removeAccountButton.clicked()
                     }
                 }
+            }
+        }
+
+        Connections {
+            target: UserModel
+            onRefreshCurrentUserGui: {
+                accountStateIndicator.source = model.isConnected
+                        ? Style.stateOnlineImageSource
+                        : Style.stateOfflineImageSource
             }
         }
 }   // MenuItem userLine

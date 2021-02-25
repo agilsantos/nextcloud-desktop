@@ -15,10 +15,10 @@ OBS_PROJECT_BETA=home:ivaradi:beta
 OBS_PACKAGE=nextcloud-desktop
 
 if test "${DRONE_TARGET_BRANCH}" = "stable-2.6"; then
-    UBUNTU_DISTRIBUTIONS="bionic eoan focal groovy"
+    UBUNTU_DISTRIBUTIONS="bionic focal groovy hirsute"
     DEBIAN_DISTRIBUTIONS="buster stretch testing"
 else
-    UBUNTU_DISTRIBUTIONS="eoan focal groovy"
+    UBUNTU_DISTRIBUTIONS="focal groovy hirsute"
     DEBIAN_DISTRIBUTIONS="testing"
 fi
 
@@ -43,6 +43,7 @@ fi
 set -x
 
 cd "${DRONE_WORKSPACE}"
+git fetch --tags
 read basever revdate kind <<<$(admin/linux/debian/scripts/git2changelog.py /tmp/tmpchangelog stable)
 
 cd "${DRONE_DIR}"
@@ -75,7 +76,7 @@ for distribution in ${UBUNTU_DISTRIBUTIONS} ${DEBIAN_DISTRIBUTIONS}; do
 
     git merge ${DRONE_COMMIT}
 
-    admin/linux/debian/scripts/git2changelog.py /tmp/tmpchangelog ${distribution} ${revdate}
+    admin/linux/debian/scripts/git2changelog.py /tmp/tmpchangelog ${distribution} ${revdate} ${basever}
     cat /tmp/tmpchangelog debian/changelog > debian/changelog.new
     mv debian/changelog.new debian/changelog
 

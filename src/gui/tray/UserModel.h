@@ -17,30 +17,42 @@ namespace OCC {
 class User : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QString name READ name NOTIFY nameChanged)
+    Q_PROPERTY(QString server READ server CONSTANT)
+    Q_PROPERTY(bool hasLocalFolder READ hasLocalFolder NOTIFY hasLocalFolderChanged)
+    Q_PROPERTY(bool serverHasTalk READ serverHasTalk NOTIFY serverHasTalkChanged)
+    Q_PROPERTY(QString avatar READ avatarUrl NOTIFY avatarChanged)
 public:
-    User(AccountStatePtr &account, const bool &isCurrent = false, QObject* parent = 0);
+    User(AccountStatePtr &account, const bool &isCurrent = false, QObject* parent = nullptr);
 
     AccountPtr account() const;
 
     bool isConnected() const;
     bool isCurrentUser() const;
     void setCurrentUser(const bool &isCurrent);
-    Folder *getFolder();
+    Folder *getFolder() const;
     ActivityListModel *getActivityModel();
     void openLocalFolder();
     QString name() const;
     QString server(bool shortened = true) const;
+    bool hasLocalFolder() const;
     bool serverHasTalk() const;
+    AccountApp *talkApp() const;
     bool hasActivities() const;
     AccountAppList appList() const;
-    QImage avatar(bool whiteBg = false) const;
-    QString id() const;
+    QImage avatar() const;
     void login() const;
     void logout() const;
     void removeAccount() const;
+    QString avatarUrl() const;
 
 signals:
     void guiLog(const QString &, const QString &);
+    void nameChanged();
+    void hasLocalFolderChanged();
+    void serverHasTalkChanged();
+    void avatarChanged();
+    void accountStateChanged(int state);
 
 public slots:
     void slotItemCompleted(const QString &folder, const SyncFileItemPtr &item);
@@ -58,6 +70,15 @@ public slots:
     void slotRefreshImmediately();
     void setNotificationRefreshInterval(std::chrono::milliseconds interval);
     void slotRebuildNavigationAppList();
+
+private:
+    void slotPushNotificationsReady();
+    void slotDisconnectPushNotifications();
+    void slotReceivedPushNotification(Account *account);
+    void slotReceivedPushActivity(Account *account);
+
+    void connectPushNotifications() const;
+    bool checkPushNotificationsAreReady() const;
 
 private:
     AccountStatePtr _account;
@@ -79,9 +100,11 @@ private:
 class UserModel : public QAbstractListModel
 {
     Q_OBJECT
+    Q_PROPERTY(User* currentUser READ currentUser NOTIFY newUserSelected)
+    Q_PROPERTY(int currentUserId READ currentUserId NOTIFY newUserSelected)
 public:
     static UserModel *instance();
-    virtual ~UserModel() {};
+    virtual ~UserModel() = default;
 
     void addUser(AccountStatePtr &user, const bool &isCurrent = false);
     int currentUserIndex();
@@ -92,17 +115,19 @@ public:
 
     QImage avatarById(const int &id);
 
+    User *currentUser() const;
+
+    int findUserIdForAccount(AccountState *account) const;
+
     Q_INVOKABLE void fetchCurrentActivityModel();
     Q_INVOKABLE void openCurrentAccountLocalFolder();
     Q_INVOKABLE void openCurrentAccountTalk();
     Q_INVOKABLE void openCurrentAccountServer();
-    Q_INVOKABLE QImage currentUserAvatar();
     Q_INVOKABLE int numUsers();
-    Q_INVOKABLE QString currentUserName();
     Q_INVOKABLE QString currentUserServer();
     Q_INVOKABLE bool currentUserHasActivities();
-    Q_INVOKABLE bool currentServerHasTalk();
-    Q_INVOKABLE int currentUserId();
+    Q_INVOKABLE bool currentUserHasLocalFolder();
+    int currentUserId() const;
     Q_INVOKABLE bool isUserConnected(const int &id);
     Q_INVOKABLE void switchCurrentUser(const int &id);
     Q_INVOKABLE void login(const int &id);
@@ -132,9 +157,9 @@ protected:
 
 private:
     static UserModel *_instance;
-    UserModel(QObject *parent = 0);
+    UserModel(QObject *parent = nullptr);
     QList<User*> _users;
-    int _currentUserId;
+    int _currentUserId = 0;
     bool _init = true;
 
     void buildUserList();
@@ -152,7 +177,7 @@ class UserAppsModel : public QAbstractListModel
     Q_OBJECT
 public:
     static UserAppsModel *instance();
-    virtual ~UserAppsModel() {};
+    virtual ~UserAppsModel() = default;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
@@ -174,7 +199,7 @@ protected:
 
 private:
     static UserAppsModel *_instance;
-    UserAppsModel(QObject *parent = 0);
+    UserAppsModel(QObject *parent = nullptr);
 
     AccountAppList _apps;
 };

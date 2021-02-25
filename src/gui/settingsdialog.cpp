@@ -41,19 +41,44 @@
 #include <QPainterPath>
 
 namespace {
-const char TOOLBAR_CSS[] =
-    "QToolBar { background: %1; margin: 0; padding: 0; border: none; border-bottom: 0 solid %2; spacing: 0; } "
-    "QToolBar QToolButton { background: %1; border: none; border-bottom: 0 solid %2; margin: 0; padding: 5px; } "
-    "QToolBar QToolBarExtension { padding:0; } "
-    "QToolBar QToolButton:checked { background: %3; color: %4; }";
+const QString TOOLBAR_CSS()
+{
+    return QStringLiteral("QToolBar { background: %1; margin: 0; padding: 0; border: none; border-bottom: 1px solid %2; spacing: 0; } "
+                          "QToolBar QToolButton { background: %1; border: none; border-bottom: 1px solid %2; margin: 0; padding: 5px; } "
+                          "QToolBar QToolBarExtension { padding:0; } "
+                          "QToolBar QToolButton:checked { background: %3; color: %4; }");
+}
 
-static const float buttonSizeRatio = 1.618f; // golden ratio
+const float buttonSizeRatio = 1.618f; // golden ratio
+
+
+/** display name with two lines that is displayed in the settings
+ * If width is bigger than 0, the string will be ellided so it does not exceed that width
+ */
+QString shortDisplayNameForSettings(OCC::Account *account, int width)
+{
+    QString user = account->davDisplayName();
+    if (user.isEmpty()) {
+        user = account->credentials()->user();
+    }
+    QString host = account->url().host();
+    int port = account->url().port();
+    if (port > 0 && port != 80 && port != 443) {
+        host.append(QLatin1Char(':'));
+        host.append(QString::number(port));
+    }
+    if (width > 0) {
+        QFont f;
+        QFontMetrics fm(f);
+        host = fm.elidedText(host, Qt::ElideMiddle, width);
+        user = fm.elidedText(user, Qt::ElideRight, width);
+    }
+    return QStringLiteral("%1\n%2").arg(user, host);
+}
 }
 
 
 namespace OCC {
-
-#include "settingsdialogcommon.cpp"
 
 SettingsDialog::SettingsDialog(ownCloudGui *gui, QWidget *parent)
     : QDialog(parent)
@@ -62,7 +87,6 @@ SettingsDialog::SettingsDialog(ownCloudGui *gui, QWidget *parent)
 {
     ConfigFile cfg;
 
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     _ui->setupUi(this);
     _toolBar = new QToolBar;
     _toolBar->setIconSize(QSize(32, 32));
@@ -76,7 +100,9 @@ SettingsDialog::SettingsDialog(ownCloudGui *gui, QWidget *parent)
     addAction(closeWindowAction);
 
     setObjectName("Settings"); // required as group for saveGeometry call
-    setWindowTitle(Theme::instance()->appNameGUI());
+
+    //: This name refers to the application name e.g Nextcloud
+    setWindowTitle(tr("%1 Settings").arg(Theme::instance()->appNameGUI()));
 
     connect(AccountManager::instance(), &AccountManager::accountAdded,
         this, &SettingsDialog::accountAdded);
@@ -87,9 +113,6 @@ SettingsDialog::SettingsDialog(ownCloudGui *gui, QWidget *parent)
     _actionGroup = new QActionGroup(this);
     _actionGroup->setExclusive(true);
     connect(_actionGroup, &QActionGroup::triggered, this, &SettingsDialog::slotSwitchPage);
-
-    _actionBefore = new QAction(this);
-    _toolBar->addAction(_actionBefore);
 
     // Adds space between users + activities and general + network actions
     auto *spacer = new QWidget();
@@ -126,16 +149,27 @@ SettingsDialog::SettingsDialog(ownCloudGui *gui, QWidget *parent)
     connect(showLogWindow, &QAction::triggered, gui, &ownCloudGui::slotToggleLogBrowser);
     addAction(showLogWindow);
 
+    auto *showLogWindow2 = new QAction(this);
+    showLogWindow2->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_L));
+    connect(showLogWindow2, &QAction::triggered, gui, &ownCloudGui::slotToggleLogBrowser);
+    addAction(showLogWindow2);
+
     connect(this, &SettingsDialog::onActivate, gui, &ownCloudGui::slotSettingsDialogActivated);
 
     customizeStyle();
 
+    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     cfg.restoreGeometry(this);
 }
 
 SettingsDialog::~SettingsDialog()
 {
     delete _ui;
+}
+
+QWidget* SettingsDialog::currentPage()
+{
+    return _ui->stack->currentWidget();
 }
 
 // close event is not being called here
@@ -188,13 +222,12 @@ void SettingsDialog::showFirstPage()
     }
 }
 
-void SettingsDialog::showIssuesList(AccountState *account) {
-    /*for (auto it = _actionGroupWidgets.begin(); it != _actionGroupWidgets.end(); ++it) {
-        if (it.value() == _activitySettings[account]) {
-            it.key()->activate(QAction::ActionEvent::Trigger);
-            break;
-        }
-    }*/
+void SettingsDialog::showIssuesList(AccountState *account)
+{
+    const auto userModel = UserModel::instance();
+    const auto id = userModel->findUserIdForAccount(account);
+    UserModel::instance()->switchCurrentUser(id);
+    emit Systray::instance()->showWindow();
 }
 
 void SettingsDialog::accountAdded(AccountState *s)
@@ -215,12 +248,16 @@ void SettingsDialog::accountAdded(AccountState *s)
 
     if (!brandingSingleAccount) {
         accountAction->setToolTip(s->account()->displayName());
-        accountAction->setIconText(SettingsDialogCommon::shortDisplayNameForSettings(s->account().data(),  height * buttonSizeRatio));
+        accountAction->setIconText(shortDisplayNameForSettings(s->account().data(), static_cast<int>(height * buttonSizeRatio)));
     }
 
-    _toolBar->insertAction(_actionBefore, accountAction);
+    _toolBar->insertAction(_toolBar->actions().at(0), accountAction);
     auto accountSettings = new AccountSettings(s, this);
-    _ui->stack->insertWidget(0, accountSettings);
+    QString objectName = QLatin1String("accountSettings_");
+    objectName += s->account()->displayName();
+    accountSettings->setObjectName(objectName);
+    _ui->stack->insertWidget(0 , accountSettings);
+
     _actionGroup->addAction(accountAction);
     _actionGroupWidgets.insert(accountAction, accountSettings);
     _actionForAccount.insert(s->account().data(), accountAction);
@@ -229,6 +266,7 @@ void SettingsDialog::accountAdded(AccountState *s)
     connect(accountSettings, &AccountSettings::folderChanged, _gui, &ownCloudGui::slotFoldersChanged);
     connect(accountSettings, &AccountSettings::openFolderAlias,
         _gui, &ownCloudGui::slotFolderOpenAction);
+    connect(accountSettings, &AccountSettings::showIssuesList, this, &SettingsDialog::showIssuesList);
     connect(s->account().data(), &Account::accountChangedAvatar, this, &SettingsDialog::slotAccountAvatarChanged);
     connect(s->account().data(), &Account::accountChangedDisplayName, this, &SettingsDialog::slotAccountDisplayNameChanged);
 
@@ -259,7 +297,7 @@ void SettingsDialog::slotAccountDisplayNameChanged()
             QString displayName = account->displayName();
             action->setText(displayName);
             auto height = _toolBar->sizeHint().height();
-            action->setIconText(SettingsDialogCommon::shortDisplayNameForSettings(account, height * buttonSizeRatio));
+            action->setIconText(shortDisplayNameForSettings(account, static_cast<int>(height * buttonSizeRatio)));
         }
     }
 }
@@ -303,7 +341,7 @@ void SettingsDialog::customizeStyle()
     QString highlightTextColor(palette().highlightedText().color().name());
     QString dark(palette().dark().color().name());
     QString background(palette().base().color().name());
-    _toolBar->setStyleSheet(QString::fromLatin1(TOOLBAR_CSS).arg(background, dark, highlightColor, highlightTextColor));
+    _toolBar->setStyleSheet(TOOLBAR_CSS().arg(background, dark, highlightColor, highlightTextColor));
 
     Q_FOREACH (QAction *a, _actionGroup->actions()) {
         QIcon icon = Theme::createColorAwareIcon(a->property("iconPath").toString(), palette());
@@ -334,6 +372,10 @@ public:
         }
 
         auto *btn = new QToolButton(parent);
+        QString objectName = QLatin1String("settingsdialog_toolbutton_");
+        objectName += text();
+        btn->setObjectName(objectName);
+
         btn->setDefaultAction(this);
         btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         btn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);

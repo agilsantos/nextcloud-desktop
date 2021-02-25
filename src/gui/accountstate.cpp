@@ -44,7 +44,6 @@ AccountState::AccountState(AccountPtr account)
     , _waitingForNewCredentials(false)
     , _maintenanceToConnectedDelay(60000 + (qrand() % (4 * 60000))) // 1-5min delay
     , _remoteWipe(new RemoteWipe(_account))
-    , _hasTalk(false)
 {
     qRegisterMetaType<AccountState *>("AccountState*");
 
@@ -54,7 +53,13 @@ AccountState::AccountState(AccountPtr account)
         this, &AccountState::slotCredentialsFetched);
     connect(account.data(), &Account::credentialsAsked,
         this, &AccountState::slotCredentialsAsked);
-    _timeSinceLastETagCheck.invalidate();
+
+    connect(this, &AccountState::isConnectedChanged, [=]{
+        // Get the Apps available on the server if we're now connected.
+        if (isConnected()) {
+            fetchNavigationApps();
+        }
+    });
 }
 
 AccountState::~AccountState() = default;
@@ -72,11 +77,6 @@ void AccountState::writeToSettings(QSettings & /*settings*/)
 AccountPtr AccountState::account() const
 {
     return _account;
-}
-
-bool AccountState::hasTalk() const
-{
-    return _hasTalk;
 }
 
 AccountState::ConnectionStatus AccountState::connectionStatus() const
@@ -156,6 +156,7 @@ bool AccountState::isSignedOut() const
 void AccountState::signOutByUi()
 {
     account()->credentials()->forgetSensitiveData();
+    account()->clearCookieJar();
     setState(SignedOut);
 }
 
@@ -179,9 +180,9 @@ bool AccountState::isConnected() const
     return _state == Connected;
 }
 
-void AccountState::tagLastSuccessfullETagRequest()
+void AccountState::tagLastSuccessfullETagRequest(const QDateTime &tp)
 {
-    _timeSinceLastETagCheck.start();
+    _timeOfLastETagCheck = tp;
 }
 
 QByteArray AccountState::notificationsEtagResponseHeader() const
@@ -225,12 +226,11 @@ void AccountState::checkConnectivity()
 
     // IF the account is connected the connection check can be skipped
     // if the last successful etag check job is not so long ago.
-    ConfigFile cfg;
-    std::chrono::milliseconds polltime = cfg.remotePollInterval();
-
-    if (isConnected() && _timeSinceLastETagCheck.isValid()
-        && _timeSinceLastETagCheck.hasExpired(polltime.count())) {
-        qCDebug(lcAccountState) << account()->displayName() << "The last ETag check succeeded within the last " << polltime.count() / 1000 << " secs. No connection check needed!";
+    const auto polltime = std::chrono::duration_cast<std::chrono::seconds>(ConfigFile().remotePollInterval());
+    const auto elapsed = _timeOfLastETagCheck.secsTo(QDateTime::currentDateTimeUtc());
+    if (isConnected() && _timeOfLastETagCheck.isValid()
+        && elapsed <= polltime.count()) {
+        qCDebug(lcAccountState) << account()->displayName() << "The last ETag check succeeded within the last " << polltime.count() << "s (" << elapsed << "s). No connection check needed!";
         return;
     }
 
@@ -242,9 +242,6 @@ void AccountState::checkConnectivity()
         // Use a small authed propfind as a minimal ping when we're
         // already connected.
         conValidator->checkAuthentication();
-
-        // Get the Apps available on the server.
-        fetchNavigationApps();
     } else {
         // Check the server and then the auth.
 
@@ -444,23 +441,19 @@ void AccountState::slotNavigationAppsFetched(const QJsonDocument &reply, int sta
             qCWarning(lcAccountState) << "Status code " << statusCode << " Not Modified - No new navigation apps.";
         } else {
             _apps.clear();
-            _hasTalk = false;
 
             if(!reply.isEmpty()){
                 auto element = reply.object().value("ocs").toObject().value("data");
-                auto navLinks = element.toArray();
+                const auto navLinks = element.toArray();
 
                 if(navLinks.size() > 0){
-                    foreach (const QJsonValue &value, navLinks) {
+                    for (const QJsonValue &value : navLinks) {
                         auto navLink = value.toObject();
 
                         auto *app = new AccountApp(navLink.value("name").toString(), QUrl(navLink.value("href").toString()),
                             navLink.value("id").toString(), QUrl(navLink.value("icon").toString()));
 
                         _apps << app;
-
-                        if(app->id() == QLatin1String("spreed"))
-                            _hasTalk = true;
                     }
                 }
             }
@@ -478,9 +471,12 @@ AccountAppList AccountState::appList() const
 AccountApp* AccountState::findApp(const QString &appId) const
 {
     if(!appId.isEmpty()) {
-        foreach(AccountApp *app, appList()) {
-            if(app->id() == appId)
-                return app;
+        const auto apps = appList();
+        const auto it = std::find_if(apps.cbegin(), apps.cend(), [appId](const auto &app) {
+            return app->id() == appId;
+        });
+        if (it != apps.cend()) {
+            return *it;
         }
     }
 

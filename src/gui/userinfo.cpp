@@ -1,6 +1,6 @@
 /*
  * Copyright (C) by Daniel Molkentin <danimo@owncloud.com>
- * Copyright (C) by Michael Schuster <michael@nextcloud.com>
+ * Copyright (C) by Michael Schuster <michael@schuster.ms>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,7 +57,9 @@ void UserInfo::setActive(bool active)
 void UserInfo::slotAccountStateChanged()
 {
     if (canGetInfo()) {
-        auto elapsed = _lastInfoReceived.msecsTo(QDateTime::currentDateTime());
+        // Obviously assumes there will never be more than thousand of hours between last info
+        // received and now, hence why we static_cast
+        auto elapsed = static_cast<int>(_lastInfoReceived.msecsTo(QDateTime::currentDateTime()));
         if (_lastInfoReceived.isNull() || elapsed >= defaultIntervalT) {
             slotFetchInfo();
         } else {
@@ -124,7 +126,7 @@ void UserInfo::slotUpdateLastInfo(const QJsonDocument &json)
     // Quota
     auto objQuota = objData.value("quota").toObject();
     qint64 used = objQuota.value("used").toDouble();
-    qint64 total = objQuota.value("total").toDouble();
+    qint64 total = objQuota.value("quota").toDouble();
 
     if(_lastInfoReceived.isNull() || _lastQuotaUsedBytes != used || _lastQuotaTotalBytes != total) {
         _lastQuotaUsedBytes = used;

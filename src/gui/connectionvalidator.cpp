@@ -76,7 +76,7 @@ void ConnectionValidator::systemProxyLookupDone(const QNetworkProxy &proxy)
     }
 
     if (proxy.type() != QNetworkProxy::NoProxy) {
-        qCInfo(lcConnectionValidator) << "Setting QNAM proxy to be system proxy" << printQNetworkProxy(proxy);
+        qCInfo(lcConnectionValidator) << "Setting QNAM proxy to be system proxy" << ClientProxy::printQNetworkProxy(proxy);
     } else {
         qCInfo(lcConnectionValidator) << "No system proxy set by OS";
     }
@@ -316,7 +316,7 @@ void ConnectionValidator::slotUserFetched(UserInfo *userInfo)
 
 #ifndef TOKEN_AUTH_ONLY
     connect(_account->e2e(), &ClientSideEncryption::initializationFinished, this, &ConnectionValidator::reportConnected);
-    _account->e2e()->initialize();
+    _account->e2e()->initialize(_account);
 #else
     reportResult(Connected);
 #endif

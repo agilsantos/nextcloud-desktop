@@ -24,6 +24,7 @@
 #include <QNetworkAccessManager>
 #include <QPropertyAnimation>
 #include <QGraphicsPixmapItem>
+#include <QBuffer>
 
 #include "QProgressIndicator.h"
 
@@ -39,16 +40,10 @@ namespace OCC {
 
 OwncloudSetupPage::OwncloudSetupPage(QWidget *parent)
     : QWizardPage()
-    , _ui()
-    , _oCUrl()
-    , _ocUser()
-    , _authTypeKnown(false)
-    , _checking(false)
-    , _authType(DetermineAuthTypeJob::Basic)
     , _progressIndi(new QProgressIndicator(this))
+    , _ocWizard(qobject_cast<OwncloudWizard *>(parent))
 {
     _ui.setupUi(this);
-    _ocWizard = qobject_cast<OwncloudWizard *>(parent);
 
     Theme *theme = Theme::instance();
     setTitle(WizardCommon::titleTemplate().arg(tr("Connect to %1").arg(theme->appNameGUI())));
@@ -57,7 +52,7 @@ OwncloudSetupPage::OwncloudSetupPage(QWidget *parent)
     if (theme->overrideServerUrl().isEmpty()) {
         _ui.leUrl->setPostfix(theme->wizardUrlPostfix());
         _ui.leUrl->setPlaceholderText(theme->wizardUrlHint());
-    } else {
+    } else if (Theme::instance()->forceOverrideServerUrl()) {
         _ui.leUrl->setEnabled(false);
     }
 
@@ -74,6 +69,7 @@ OwncloudSetupPage::OwncloudSetupPage(QWidget *parent)
     connect(_ui.leUrl, &QLineEdit::editingFinished, this, &OwncloudSetupPage::slotUrlEditFinished);
 
     addCertDial = new AddCertificateDialog(this);
+    connect(addCertDial, &QDialog::accepted, this, &OwncloudSetupPage::slotCertificateAccepted);
 
 #ifdef WITH_PROVIDERS
     connect(_ui.loginButton, &QPushButton::clicked, this, &OwncloudSetupPage::slotLogin);
@@ -96,6 +92,11 @@ OwncloudSetupPage::OwncloudSetupPage(QWidget *parent)
     _ui.installLink->hide();
     _ui.slideShow->hide();
 #endif
+
+    const auto appName = Theme::instance()->appNameGUI();
+    _ui.loginButton->setText(tr("Log in to your %1").arg(appName));
+    _ui.addressDescriptionLabel->setText(tr("This is the link to your %1 web interface when you open it in the browser.<br/>"
+                                            "It looks like https://cloud.example.com or https://example.com/cloud").arg(appName));
 
     customizeStyle();
 }
@@ -131,6 +132,10 @@ void OwncloudSetupPage::setupCustomization()
 #ifdef WITH_PROVIDERS
 void OwncloudSetupPage::slotLogin()
 {
+    _ui.slideShow->hide();
+    _ui.nextButton->hide();
+    _ui.prevButton->hide();
+
     _ocWizard->setRegistration(false);
     _ui.login->setMaximumHeight(0);
     auto *animation = new QPropertyAnimation(_ui.login, "maximumHeight");
@@ -177,14 +182,15 @@ void OwncloudSetupPage::slotUrlChanged(const QString &url)
         _ui.leUrl->setText(newUrl);
     }
 
-    if (!url.startsWith(QLatin1String("https://"))) {
-        _ui.urlLabel->setPixmap(QPixmap(Theme::hidpiFileName(":/client/theme/lock-http.svg")));
-        _ui.urlLabel->setToolTip(tr("This URL is NOT secure as it is not encrypted.\n"
-                                    "It is not advisable to use it."));
-    } else {
-        _ui.urlLabel->setPixmap(QPixmap(Theme::hidpiFileName(":/client/theme/lock-https.svg")));
-        _ui.urlLabel->setToolTip(tr("This URL is secure. You can use it."));
-    }
+    const auto isSecure = url.startsWith(QLatin1String("https://"));
+    const auto toolTip = isSecure ? tr("This URL is secure. You can use it.")
+                                  : tr("This URL is NOT secure as it is not encrypted.\n"
+                                       "It is not advisable to use it.");
+    const auto pixmap = isSecure ? QPixmap(Theme::hidpiFileName(":/client/theme/lock-https.svg"))
+                                 : QPixmap(Theme::hidpiFileName(":/client/theme/lock-http.svg"));
+
+    _ui.urlLabel->setToolTip(toolTip);
+    _ui.urlLabel->setPixmap(pixmap.scaled(_ui.urlLabel->size(), Qt::KeepAspectRatio));
 }
 
 void OwncloudSetupPage::slotUrlEditFinished()
@@ -193,8 +199,8 @@ void OwncloudSetupPage::slotUrlEditFinished()
     if (QUrl(url).isRelative() && !url.isEmpty()) {
         // no scheme defined, set one
         url.prepend("https://");
+        _ui.leUrl->setFullText(url);
     }
-    _ui.leUrl->setFullText(url);
 }
 
 bool OwncloudSetupPage::isComplete() const
@@ -219,6 +225,10 @@ void OwncloudSetupPage::initializePage()
     // immediately.
     if (Theme::instance()->overrideServerUrl().isEmpty()) {
         _ui.leUrl->setFocus();
+    } else if (!Theme::instance()->forceOverrideServerUrl()) {
+        if (nextButton) {
+            nextButton->setFocus();
+        }
     } else {
         setCommitPage(true);
         // Hack: setCommitPage() changes caption, but after an error this page could still be visible
@@ -227,30 +237,6 @@ void OwncloudSetupPage::initializePage()
         setVisible(false);
     }
     wizard()->resize(wizard()->sizeHint());
-}
-
-bool OwncloudSetupPage::urlHasChanged()
-{
-    bool change = false;
-    const QChar slash('/');
-
-    QUrl currentUrl(url());
-    QUrl initialUrl(_oCUrl);
-
-    QString currentPath = currentUrl.path();
-    QString initialPath = initialUrl.path();
-
-    // add a trailing slash.
-    if (!currentPath.endsWith(slash))
-        currentPath += slash;
-    if (!initialPath.endsWith(slash))
-        initialPath += slash;
-
-    if (currentUrl.host() != initialUrl.host() || currentUrl.port() != initialUrl.port() || currentPath != initialPath) {
-        change = true;
-    }
-
-    return change;
 }
 
 int OwncloudSetupPage::nextId() const
@@ -279,6 +265,7 @@ QString OwncloudSetupPage::url() const
 bool OwncloudSetupPage::validatePage()
 {
     if (!_authTypeKnown) {
+        slotUrlEditFinished();
         QString u = url();
         QUrl qurl(u);
         if (!qurl.isValid() || qurl.host().isEmpty()) {
@@ -335,7 +322,6 @@ void OwncloudSetupPage::setErrorString(const QString &err, bool retryHTTPonly)
                 } break;
                 case OwncloudConnectionMethodDialog::Client_Side_TLS:
                     addCertDial->show();
-                    connect(addCertDial, &QDialog::accepted, this, &OwncloudSetupPage::slotCertificateAccepted);
                     break;
                 case OwncloudConnectionMethodDialog::Closed:
                 case OwncloudConnectionMethodDialog::Back:
@@ -381,34 +367,20 @@ void OwncloudSetupPage::slotCertificateAccepted()
 {
     QFile certFile(addCertDial->getCertificatePath());
     certFile.open(QFile::ReadOnly);
-    if (QSslCertificate::importPkcs12(
-            &certFile,
-            &_ocWizard->_clientSslKey,
-            &_ocWizard->_clientSslCertificate,
-            &_ocWizard->_clientSslCaCertificates,
-            addCertDial->getCertificatePasswd().toLocal8Bit())) {
-        AccountPtr acc = _ocWizard->account();
+    QByteArray certData = certFile.readAll();
+    QByteArray certPassword = addCertDial->getCertificatePasswd().toLocal8Bit();
 
-        // to re-create the session ticket because we added a key/cert
-        acc->setSslConfiguration(QSslConfiguration());
-        QSslConfiguration sslConfiguration = acc->getOrCreateSslConfig();
-
-        // We're stuffing the certificate into the configuration form here. Later the
-        // cert will come via the HttpCredentials
-        sslConfiguration.setLocalCertificate(_ocWizard->_clientSslCertificate);
-        sslConfiguration.setPrivateKey(_ocWizard->_clientSslKey);
-
-        // Be sure to merge the CAs
-        auto ca = sslConfiguration.systemCaCertificates();
-        ca.append(_ocWizard->_clientSslCaCertificates);
-        sslConfiguration.setCaCertificates(ca);
-
-        acc->setSslConfiguration(sslConfiguration);
-
-        // Make sure TCP connections get re-established
-        acc->networkAccessManager()->clearAccessCache();
+    QBuffer certDataBuffer(&certData);
+    certDataBuffer.open(QIODevice::ReadOnly);
+    if (QSslCertificate::importPkcs12(&certDataBuffer,
+            &_ocWizard->_clientSslKey, &_ocWizard->_clientSslCertificate,
+            &_ocWizard->_clientSslCaCertificates, certPassword)) {
+        _ocWizard->_clientCertBundle = certData;
+        _ocWizard->_clientCertPassword = certPassword;
 
         addCertDial->reinit(); // FIXME: Why not just have this only created on use?
+
+        // The extracted SSL key and cert gets added to the QSslConfiguration in checkServer()
         validatePage();
     } else {
         addCertDial->showErrorMessage(tr("Could not load certificate. Maybe wrong password?"));

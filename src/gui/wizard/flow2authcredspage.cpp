@@ -1,6 +1,6 @@
 /*
  * Copyright (C) by Olivier Goffart <ogoffart@woboq.com>
- * Copyright (C) by Michael Schuster <michael@nextcloud.com>
+ * Copyright (C) by Michael Schuster <michael@schuster.ms>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,8 +29,7 @@
 namespace OCC {
 
 Flow2AuthCredsPage::Flow2AuthCredsPage()
-    : AbstractCredentialsWizardPage(),
-    _flow2AuthWidget(nullptr)
+    : AbstractCredentialsWizardPage()
 {
     _layout = new QVBoxLayout(this);
 
@@ -76,6 +75,7 @@ void OCC::Flow2AuthCredsPage::cleanupPage()
 
 void Flow2AuthCredsPage::slotFlow2AuthResult(Flow2Auth::Result r, const QString &errorString, const QString &user, const QString &appPassword)
 {
+    Q_UNUSED(errorString)
     switch (r) {
     case Flow2Auth::NotSupported: {
         /* Flow2Auth not supported (can't open browser) */

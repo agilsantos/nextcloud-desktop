@@ -1,5 +1,5 @@
 /*
- * Copyright (C) by Michael Schuster <michael@nextcloud.com>
+ * Copyright (C) by Michael Schuster <michael@schuster.ms>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,15 +22,12 @@
 
 namespace OCC {
 
-Q_LOGGING_CATEGORY(lcFlow2AuthWidget, "gui.wizard.flow2authwidget", QtInfoMsg)
+Q_LOGGING_CATEGORY(lcFlow2AuthWidget, "nextcloud.gui.wizard.flow2authwidget", QtInfoMsg)
 
 
 Flow2AuthWidget::Flow2AuthWidget(QWidget *parent)
     : QWidget(parent)
-    , _account(nullptr)
-    , _ui()
     , _progressIndi(new QProgressIndicator(this))
-    , _statusUpdateSkipCount(0)
 {
     _ui.setupUi(this);
 

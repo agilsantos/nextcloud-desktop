@@ -32,8 +32,8 @@ class Account;
 class AccountApp;
 class RemoteWipe;
 
-typedef QExplicitlySharedDataPointer<AccountState> AccountStatePtr;
-typedef QList<AccountApp*> AccountAppList;
+using AccountStatePtr = QExplicitlySharedDataPointer<AccountState>;
+using AccountAppList = QList<AccountApp *>;
 
 /**
  * @brief Extra info about an ownCloud server account.
@@ -42,6 +42,8 @@ typedef QList<AccountApp*> AccountAppList;
 class AccountState : public QObject, public QSharedData
 {
     Q_OBJECT
+    Q_PROPERTY(AccountPtr account MEMBER _account)
+
 public:
     enum State {
         /// Not even attempting to connect, most likely because the
@@ -75,7 +77,7 @@ public:
     };
 
     /// The actual current connectivity status.
-    typedef ConnectionValidator::Status ConnectionStatus;
+    using ConnectionStatus = ConnectionValidator::Status;
 
     /// Use the account as parent
     explicit AccountState(AccountPtr account);
@@ -102,8 +104,6 @@ public:
     static QString stateString(State state);
 
     bool isSignedOut() const;
-
-    bool hasTalk() const;
 
     AccountAppList appList() const;
     AccountApp* findApp(const QString &appId) const;
@@ -136,7 +136,7 @@ public:
      *  the server to validate the connection if the last successful etag job
      *  was not so long ago.
      */
-    void tagLastSuccessfullETagRequest();
+    void tagLastSuccessfullETagRequest(const QDateTime &tp);
 
     /** Saves the ETag Response header from the last Notifications api
      * request with statusCode 200.
@@ -171,7 +171,7 @@ private:
     void fetchNavigationApps();
 
 signals:
-    void stateChanged(int state);
+    void stateChanged(State state);
     void isConnectedChanged();
     void hasFetchedNavigationApps();
 
@@ -195,8 +195,7 @@ private:
     ConnectionStatus _connectionStatus;
     QStringList _connectionErrors;
     bool _waitingForNewCredentials;
-    bool _hasTalk;
-    QElapsedTimer _timeSinceLastETagCheck;
+    QDateTime _timeOfLastETagCheck;
     QPointer<ConnectionValidator> _connectionValidator;
     QByteArray _notificationsEtagResponseHeader;
     QByteArray _navigationAppsEtagResponseHeader;
@@ -232,7 +231,7 @@ class AccountApp : public QObject
 public:
     AccountApp(const QString &name, const QUrl &url,
         const QString &id, const QUrl &iconUrl,
-        QObject* parent = 0);
+        QObject* parent = nullptr);
 
     QString name() const;
     QUrl url() const;

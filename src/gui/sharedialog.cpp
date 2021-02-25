@@ -25,6 +25,7 @@
 #include "configfile.h"
 #include "theme.h"
 #include "thumbnailjob.h"
+#include "wordlist.h"
 
 #include <QFileInfo>
 #include <QFileIconProvider>
@@ -32,6 +33,20 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QFrame>
+
+namespace {
+QString createRandomPassword()
+{
+    const auto words = OCC::WordList::getRandomWords(10);
+
+    const auto addFirstLetter = [](const QString &current, const QString &next) {
+        return current + next.at(0);
+    };
+
+    return std::accumulate(std::cbegin(words), std::cend(words), QString(), addFirstLetter);
+}
+}
+
 
 namespace OCC {
 
@@ -72,11 +87,10 @@ ShareDialog::ShareDialog(QPointer<AccountState> accountState,
     }
 
     // Set filename
-    QFileInfo lPath(_localPath);
-    QString fileName = lPath.fileName();
+    QString fileName = QFileInfo(_sharePath).fileName();
     _ui->label_name->setText(tr("%1").arg(fileName));
     QFont f(_ui->label_name->font());
-    f.setPointSize(f.pointSize() * 1.4);
+    f.setPointSize(qRound(f.pointSize() * 1.4));
     _ui->label_name->setFont(f);
 
     QString ocDir(_sharePath);
@@ -168,6 +182,10 @@ void ShareDialog::initLinkShareWidget(){
     if(_linkWidgetList.size() == 0){
         _emptyShareLinkWidget = new ShareLinkWidget(_accountState->account(), _sharePath, _localPath, _maxSharingPermissions, this);
         _linkWidgetList.append(_emptyShareLinkWidget);
+
+        if (_manager) {
+            connect(_manager, &ShareManager::linkShareRequiresPassword, _emptyShareLinkWidget, &ShareLinkWidget::slotCreateShareRequiresPassword);
+        }
 
         connect(_emptyShareLinkWidget, &ShareLinkWidget::resizeRequested, this, &ShareDialog::slotAdjustScrollWidgetSize);
 //        connect(this, &ShareDialog::toggleAnimation, _emptyShareLinkWidget, &ShareLinkWidget::slotToggleAnimation);
@@ -303,7 +321,9 @@ void ShareDialog::showSharingUi()
 void ShareDialog::slotCreateLinkShare()
 {
     if(_manager) {
-        _manager->createLinkShare(_sharePath, QString(), QString());
+        const auto askOptionalPassword = _accountState->account()->capabilities().sharePublicLinkAskOptionalPassword();
+        const auto password = askOptionalPassword ? createRandomPassword() : QString();
+        _manager->createLinkShare(_sharePath, QString(), password);
     }
 }
 

@@ -92,7 +92,7 @@ void ServerNotificationHandler::slotNotificationsReceived(const QJsonDocument &j
         auto json = element.toObject();
         a._type = Activity::NotificationType;
         a._accName = ai->account()->displayName();
-        a._id = json.value("activity_id").toInt();
+        a._id = json.value("notification_id").toInt();
 
         //need to know, specially for remote_share
         a._objectType = json.value("object_type").toString();
@@ -128,7 +128,7 @@ void ServerNotificationHandler::slotNotificationsReceived(const QJsonDocument &j
             al._label = QUrl::fromPercentEncoding(actionJson.value("label").toString().toUtf8());
             al._link = actionJson.value("link").toString();
             al._verb = actionJson.value("type").toString().toUtf8();
-            al._isPrimary = actionJson.value("primary").toBool();
+            al._primary = actionJson.value("primary").toBool();
 
             a._links.append(al);
         }
@@ -139,7 +139,7 @@ void ServerNotificationHandler::slotNotificationsReceived(const QJsonDocument &j
         al._label = tr("Dismiss");
         al._link = Utility::concatUrlPath(ai->account()->url(), notificationsPath + "/" + QString::number(a._id)).toString();
         al._verb = "DELETE";
-        al._isPrimary = false;
+        al._primary = false;
         a._links.append(al);
 
         list.append(a);

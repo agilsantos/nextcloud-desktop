@@ -38,8 +38,6 @@ class SyncFileItem;
 class OCSYNC_EXPORT SyncJournalFileRecord
 {
 public:
-    SyncJournalFileRecord();
-
     bool isValid() const
     {
         return !_path.isEmpty();
@@ -54,17 +52,24 @@ public:
     QByteArray numericFileId() const;
     QDateTime modDateTime() const { return Utility::qDateTimeFromTime_t(_modtime); }
 
+    bool isDirectory() const { return _type == ItemTypeDirectory; }
+    bool isFile() const { return _type == ItemTypeFile || _type == ItemTypeVirtualFileDehydration; }
+    bool isVirtualFile() const { return _type == ItemTypeVirtualFile || _type == ItemTypeVirtualFileDownload; }
+    QString path() const { return QString::fromUtf8(_path); }
+    QString e2eMangledName() const { return QString::fromUtf8(_e2eMangledName); }
+
     QByteArray _path;
-    quint64 _inode;
-    qint64 _modtime;
-    ItemType _type;
+    quint64 _inode = 0;
+    qint64 _modtime = 0;
+    ItemType _type = ItemTypeSkip;
     QByteArray _etag;
     QByteArray _fileId;
-    qint64 _fileSize;
+    qint64 _fileSize = 0;
     RemotePermissions _remotePerm;
-    bool _serverHasIgnoredFiles;
+    bool _serverHasIgnoredFiles = false;
     QByteArray _checksumHeader;
     QByteArray _e2eMangledName;
+    bool _isE2eEncrypted = false;
 };
 
 bool OCSYNC_EXPORT
@@ -101,6 +106,9 @@ public:
     QString _file;
     QString _renameTarget;
 
+    /// The last X-Request-ID of the request that failled
+    QByteArray _requestId;
+
     bool isValid() const;
 };
 
@@ -134,6 +142,17 @@ public:
      * may not be available and empty
      */
     QByteArray baseEtag;
+
+    /**
+     * The path of the original file at the time the conflict was created
+     *
+     * Note that in nearly all cases one should query the db by baseFileId and
+     * thus retrieve the *current* base path instead!
+     *
+     * maybe be empty if not available
+     */
+    QByteArray initialBasePath;
+
 
     bool isValid() const { return !path.isEmpty(); }
 };

@@ -41,6 +41,7 @@ public:
     bool validatePage() override;
     QString localFolder() const;
     QStringList selectiveSyncBlacklist() const;
+    bool useVirtualFileSync() const;
     bool isConfirmBigFolderChecked() const;
     void setRemoteFolder(const QString &remoteFolder);
     void setMultipleFoldersExist(bool exist);
@@ -57,9 +58,12 @@ private slots:
     void slotSelectFolder();
     void slotSyncEverythingClicked();
     void slotSelectiveSyncClicked();
+    void slotVirtualFileSyncClicked();
     void slotQuotaRetrieved(const QVariantMap &result);
 
 private:
+    void setRadioChecked(QRadioButton *radio);
+
     void setupCustomization();
     void updateStatus();
     bool dataChanged();
@@ -71,14 +75,14 @@ private:
     void customizeStyle();
 
     Ui_OwncloudAdvancedSetupPage _ui;
-    bool _checking;
-    bool _created;
-    bool _localFolderValid;
+    bool _checking = false;
+    bool _created = false;
+    bool _localFolderValid = false;
     QProgressIndicator *_progressIndi;
     QString _remoteFolder;
     QStringList _selectiveSyncBlacklist;
-    qint64 _rSize;
-    qint64 _rSelectedSize;
+    qint64 _rSize = -1;
+    qint64 _rSelectedSize = -1;
 };
 
 } // namespace OCC
